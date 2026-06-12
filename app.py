@@ -1,4 +1,3 @@
-import os
 import base64
 from textwrap import dedent
 from pathlib import Path
@@ -219,11 +218,9 @@ SCENES = [
 
 
 def get_api_key() -> str | None:
-    # OpenAI 사용 준비: Streamlit Cloud Secrets 또는 로컬 환경변수에서 API 키를 읽습니다.
-    try:
-        key = st.secrets.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
-    except Exception:
-        key = os.getenv("OPENAI_API_KEY")
+    # OpenAI 사용 준비: 방문자가 화면에 직접 입력한 API 키만 사용합니다.
+    # Streamlit Cloud Secrets나 서버 환경변수를 자동으로 쓰지 않아 배포자 키가 소모되지 않습니다.
+    key = st.session_state.get("user_api_key", "")
     if not key or key.strip() in {"your_api_key_here", "your_api_key", "..."}:
         return None
     return key.strip()
@@ -378,6 +375,8 @@ def generate_ai_scene_intro(scene: dict) -> str:
 
 def get_ai_scene_intro(scene: dict) -> str:
     # 같은 장면에서 API를 반복 호출하지 않도록, 한 번 생성한 AI 현장 묘사는 세션에 저장합니다.
+    if not get_api_key() or not st.session_state.use_ai:
+        return ""
     scene_index = st.session_state.scene_index
     if scene_index not in st.session_state.ai_scene_messages:
         st.session_state.ai_scene_messages[scene_index] = generate_ai_scene_intro(scene)
@@ -400,6 +399,9 @@ def ensure_state() -> None:
     defaults = {
         "use_ai": True,
         "model_name": "gpt-4o-mini",
+        "user_api_key": "",
+        "api_key_input": "",
+        "api_key_input_main": "",
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -564,6 +566,34 @@ st.markdown(
         font-weight: 800;
         margin-bottom: 8px;
     }
+    .api-login-note {
+        border: 1px solid #34495e;
+        background: #111820;
+        border-radius: 8px;
+        padding: 12px;
+        color: #d8e3ec;
+        font-size: 13px;
+        line-height: 1.5;
+        margin-bottom: 10px;
+    }
+    .api-login-main {
+        border: 1px solid #3c526a;
+        background: #101923;
+        border-radius: 8px;
+        padding: 16px 18px;
+        margin: 0 0 20px 0;
+        color: #e8f1f8;
+    }
+    .api-login-main-title {
+        font-size: 18px;
+        font-weight: 800;
+        margin-bottom: 6px;
+    }
+    .api-login-main-body {
+        color: #bfd0dd;
+        font-size: 14px;
+        line-height: 1.55;
+    }
     .journal-frame img {
         border: 1px solid #d8c8ad;
         border-radius: 8px;
@@ -603,12 +633,47 @@ with st.sidebar:
 
     st.divider()
     st.subheader("AI 게임 마스터")
-    st.session_state.use_ai = st.toggle("OpenAI로 묘사 생성", value=st.session_state.use_ai)
-    st.session_state.model_name = st.text_input("모델", value=st.session_state.model_name)
     if get_api_key():
-        st.success("OPENAI_API_KEY 감지됨")
+        st.success("API 키 연결됨")
+        if st.button("API 키 연결 해제", use_container_width=True):
+            st.session_state.user_api_key = ""
+            st.session_state.api_key_input = ""
+            st.session_state.ai_scene_messages = {}
+            st.session_state.hint_messages = {}
+            st.rerun()
     else:
-        st.caption("API 키가 없으면 기본 스토리 문장으로 진행됩니다.")
+        st.markdown(
+            """
+            <div class="api-login-note">
+                AI 묘사를 사용하려면 본인의 OpenAI API 키를 입력하세요.
+                키는 현재 브라우저 세션에서만 사용됩니다.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.text_input(
+            "OpenAI API Key",
+            type="password",
+            placeholder="sk-...",
+            key="api_key_input",
+        )
+        if st.button("API 키로 시작하기", use_container_width=True):
+            if st.session_state.api_key_input.strip():
+                st.session_state.user_api_key = st.session_state.api_key_input.strip()
+                st.session_state.ai_scene_messages = {}
+                st.session_state.hint_messages = {}
+                st.rerun()
+            else:
+                st.warning("API 키를 입력해주세요.")
+
+    st.session_state.use_ai = st.toggle(
+        "OpenAI로 묘사 생성",
+        value=st.session_state.use_ai,
+        disabled=not bool(get_api_key()),
+    )
+    st.session_state.model_name = st.text_input("모델", value=st.session_state.model_name)
+    if not get_api_key():
+        st.caption("API 키를 입력하지 않으면 기본 스토리 문장으로 진행됩니다.")
 
     st.divider()
     st.subheader("보유 단서")
@@ -631,6 +696,39 @@ st.markdown(
     '<div class="subtitle">무너진 굴을 떠나, 가족의 선택과 AI 게임 마스터의 묘사로 새 보금자리를 찾아가는 지하 굴착 모험</div>',
     unsafe_allow_html=True,
 )
+
+if not get_api_key():
+    st.markdown(
+        """
+        <div class="api-login-main">
+            <div class="api-login-main-title">OpenAI API Key로 AI 게임 마스터 시작하기</div>
+            <div class="api-login-main-body">
+                방문자 본인의 API 키를 입력하면 장면 묘사, 선택 결과, 힌트가 AI로 생성됩니다.
+                입력한 키는 현재 브라우저 세션에서만 사용됩니다.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    login_col, button_col = st.columns([1.6, 0.8], gap="medium")
+    with login_col:
+        st.text_input(
+            "OpenAI API Key",
+            type="password",
+            placeholder="sk-...",
+            key="api_key_input_main",
+            label_visibility="collapsed",
+        )
+    with button_col:
+        if st.button("API 키 연결", type="primary", use_container_width=True):
+            if st.session_state.api_key_input_main.strip():
+                st.session_state.user_api_key = st.session_state.api_key_input_main.strip()
+                st.session_state.api_key_input = st.session_state.api_key_input_main.strip()
+                st.session_state.ai_scene_messages = {}
+                st.session_state.hint_messages = {}
+                st.rerun()
+            else:
+                st.warning("API 키를 입력해주세요.")
 
 if not st.session_state.finished:
     scene = SCENES[st.session_state.scene_index]

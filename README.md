@@ -9,18 +9,19 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-## OpenAI 사용
+## OpenAI 사용 방식
 
-OpenAI API 키가 있으면 선택 결과와 힌트가 AI 게임 마스터의 문장으로 생성됩니다.
+이 앱은 배포자의 OpenAI API 키를 자동으로 사용하지 않습니다.
 
-PowerShell 예시:
+방문자가 앱 화면의 `OpenAI API Key` 입력창에 본인의 API 키를 입력하면, 그 브라우저 세션에서만 AI 게임 마스터 기능이 켜집니다.
 
-```powershell
-$env:OPENAI_API_KEY="your_api_key"
-streamlit run app.py
-```
+AI가 사용되는 곳:
 
-API 키가 없어도 기본 스토리 문장으로 게임을 플레이할 수 있습니다.
+- 장면별 `AI 생성 현장 묘사`
+- 선택지를 누른 뒤 나오는 결과 문장
+- 힌트 버튼을 눌렀을 때 생성되는 힌트
+
+API 키를 입력하지 않아도 기본 스토리 문장으로 게임을 플레이할 수 있습니다.
 
 ## 게임 구조
 
